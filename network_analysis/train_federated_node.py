@@ -96,7 +96,8 @@ NODE_CLASSES = {
         "SlowDoSExperiment",
         "PacketLossExperiment",
         "DataTamperingCRCForgedExperiment",
-        "DeviceSpoofHardExperiment"
+        "DeviceSpoofHardExperiment",
+        "DuplicatePacketExperiment"
     ]
 }
 
