@@ -11,50 +11,13 @@ from FeatureTransformer import FeatureTransformer
 from train_federated_node import GLOBAL_CLASSES
 from mlp_torch import load_model
 
-def load_cyber_only_dataset(results_dir: Path) -> pd.DataFrame:
-    cyber_files = sorted(results_dir.rglob("cyber_data.csv"))
-    if not cyber_files:
-        raise FileNotFoundError(f"No cyber_data.csv files found under: {results_dir}")
-
-    dfs = []
-    for cyber_path in cyber_files:
-        try:
-            df = pd.read_csv(cyber_path)
-            df["window_start_time"] = pd.to_datetime(df["window_start_time"])
-            df = df.sort_values("window_start_time").reset_index(drop=True)
-            dfs.append(df)
-        except Exception as exc:
-            pass
-
-    master = pd.concat(dfs, ignore_index=True)
+def load_unified_eval_dataset(dataset_dir: Path) -> pd.DataFrame:
+    dataset_path = dataset_dir / "global_evaluation_dataset_undersampled.csv"
+    if not dataset_path.exists():
+        raise FileNotFoundError(f"Dataset not found: {dataset_path}")
+    
+    master = pd.read_csv(dataset_path)
     master["AttackLabel"] = master["AttackLabel"].replace("NormalExperiment", "Normal")
-    
-    # Noise cleaning
-    clean_masks = [master["AttackLabel"] == "Normal"]
-    other_attacks = master["AttackLabel"].isin([
-        "DelayExperiment", "ConnectionResetExperiment", 
-        "DuplicatePacketExperiment", "FloodingExperiment", 
-        "DeviceSpoofHardExperiment", "PacketLossExperiment",
-        "SlowDoSExperiment", "ReconScanExperiment",
-        "DataTamperingBitFlipExperiment", "DataTamperingCRCForgedExperiment",
-        "ReplayExperiment"
-    ])
-    clean_masks.append(other_attacks & (master["total_packets"] > 2))
-    
-    clean_masks.append(master["AttackLabel"].isin([
-        "PacketInjectionMalformedExperiment", 
-        "PacketInjectionConformantExperiment"
-    ]))
-    
-    final_mask = pd.concat(clean_masks, axis=1).any(axis=1)
-    from train_federated_node import DROPPED_CLASSES
-    if DROPPED_CLASSES:
-        master = master[~master["AttackLabel"].isin(DROPPED_CLASSES)].reset_index(drop=True)
-        
-    # Downsample massive classes to ensure the evaluation metrics and confusion matrix are balanced
-    MAX_SAMPLES_PER_CLASS = 350
-    master = master.groupby("AttackLabel", group_keys=False).apply(lambda x: x.sample(min(len(x), MAX_SAMPLES_PER_CLASS), random_state=42)).reset_index(drop=True)
-    
     return master
 
 import argparse
@@ -67,11 +30,11 @@ def main():
     args = parser.parse_args()
 
     base_dir = Path(__file__).resolve().parent.parent
-    eval_dir = base_dir / "rpi" / "experiments" / "results" / "evaluation"
+    eval_dir = base_dir / "dataset"
     models_dir = base_dir / args.model_dir
     
     print(f"Loading holdout dataset from {eval_dir}...")
-    df = load_cyber_only_dataset(eval_dir)
+    df = load_unified_eval_dataset(eval_dir)
     print(f"Loaded {len(df)} samples across {df['AttackLabel'].nunique()} classes.")
     
     transformer = FeatureTransformer()

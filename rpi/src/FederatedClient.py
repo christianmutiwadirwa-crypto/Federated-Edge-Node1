@@ -43,13 +43,10 @@ NODE_ID = os.environ.get("NODE_ID", "edge_node_1")
 
 # Paths
 BASE_DIR      = Path(__file__).resolve().parent.parent.parent
-MODELS_DIR    = BASE_DIR / f"models_{NODE_ID}"
+MODELS_DIR    = BASE_DIR / "models"
 MODEL_PATH    = MODELS_DIR / "fused_ids_model.pth"      # PyTorch checkpoint
-TRAIN_SCRIPT  = BASE_DIR / "network_analysis" / "train_federated_node.py"
+TRAIN_SCRIPT  = BASE_DIR / "rpi" / "src" / "train_federated_node.py"
 
-# PyTorch mlp_torch is in the network_analysis directory
-import sys as _sys
-_sys.path.insert(0, str(BASE_DIR / "network_analysis"))
 from mlp_torch import FederatedMLP, load_model as _load_torch, apply_weights as _apply_torch, extract_weights as _extract_torch, save_model as _save_torch
 
 
@@ -58,13 +55,15 @@ class FederatedClient:
 
     def __init__(self, server_url: str = FL_SERVER_URL, node_id: str = NODE_ID, 
                  no_kd: bool = False, no_fedprox: bool = False, 
-                 no_fedcurv: bool = False, no_freeze: bool = False):
+                 no_fedcurv: bool = False, no_freeze: bool = False,
+                 no_class_aware: bool = False):
         self.server_url = server_url.rstrip("/")
         self.node_id = node_id
         self.no_kd = no_kd
         self.no_fedprox = no_fedprox
         self.no_fedcurv = no_fedcurv
         self.no_freeze = no_freeze
+        self.no_class_aware = no_class_aware
 
     def trigger_round(self, skip_training: bool = False):
         """Execute a full FL round."""
@@ -120,7 +119,13 @@ class FederatedClient:
             resp = requests.get(f"{self.server_url}/global_scaler", timeout=10)
             if resp.status_code == 200:
                 data = resp.json()
-                scaler = joblib.load(MODELS_DIR / "scaler.pkl")
+                scaler_path = MODELS_DIR / "scaler.pkl"
+                if scaler_path.exists():
+                    scaler = joblib.load(scaler_path)
+                else:
+                    from sklearn.preprocessing import StandardScaler
+                    scaler = StandardScaler()
+                    
                 scaler.mean_ = np.array(data["scaler_mean"])
                 scaler.var_  = np.array(data["scaler_var"])
                 scaler.n_samples_seen_ = data["scaler_samples"]
@@ -212,10 +217,15 @@ class FederatedClient:
 
             # Attach class counts for server-side class-aware aggregation
             class_counts_path = MODELS_DIR / "class_counts.json"
-            if class_counts_path.exists():
+            if not self.no_class_aware and class_counts_path.exists():
                 with open(class_counts_path, "r") as f:
                     counts = json.load(f)
                     weights["class_counts"] = counts
+                    weights["training_samples"] = sum(counts)
+            elif class_counts_path.exists():
+                # Still need training_samples for simple fedavg
+                with open(class_counts_path, "r") as f:
+                    counts = json.load(f)
                     weights["training_samples"] = sum(counts)
 
             weights["node_id"]       = self.node_id
@@ -349,8 +359,7 @@ class FederatedClient:
             print("     [SKIP] No evaluation dataset found.")
             return False
             
-        metrics_json = BASE_DIR / "metrics.json"
-        test_script = BASE_DIR / "network_analysis" / "evaluate_holdout.py"
+        test_script = BASE_DIR / "rpi" / "src" / "evaluate_holdout.py"
         
         try:
             subprocess.run(
@@ -394,6 +403,7 @@ if __name__ == "__main__":
     parser.add_argument("--no-fedprox", action="store_true", help="Disable FedProx")
     parser.add_argument("--no-fedcurv", action="store_true", help="Disable FedCurv")
     parser.add_argument("--no-freeze", action="store_true", help="Disable Output Neuron Freezing")
+    parser.add_argument("--no-class-aware", action="store_true", help="Disable Class-Aware Aggregation")
     args = parser.parse_args()
 
     client = FederatedClient(
@@ -402,6 +412,7 @@ if __name__ == "__main__":
         no_kd=args.no_kd,
         no_fedprox=args.no_fedprox,
         no_fedcurv=args.no_fedcurv,
-        no_freeze=args.no_freeze
+        no_freeze=args.no_freeze,
+        no_class_aware=args.no_class_aware
     )
     client.trigger_round(skip_training=args.skip_training)

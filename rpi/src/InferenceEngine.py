@@ -154,27 +154,22 @@ class InferenceEngine(threading.Thread):
             self._model_ready = False
 
         # Load Isolation Forest
-        required_iso = {
-            "iso_forest_model.pkl":     "_iso_model",
-            "iso_scaler.pkl":           "_iso_scaler",
-            "iso_physical_columns.pkl": "_iso_feature_columns",
-        }
         self._iso_model_ready = False
         try:
-            for filename, attr in required_iso.items():
-                path = self._models_dir / filename
-                if not path.exists():
-                    self._log(f"[InferenceEngine] Missing Isolation Forest artifact: {path}. "
-                              "Physical anomaly detection disabled.", level="warning")
-                    raise FileNotFoundError()
-                setattr(self, attr, joblib.load(path))
+            iso_model_path = self._models_dir / "iso_forest_model.pkl"
+            iso_scaler_path = self._models_dir / "iso_scaler.pkl"
+            iso_cols_path = self._models_dir / "iso_physical_columns.pkl"
             
-            self._iso_model_ready = True
-            self._log(f"[InferenceEngine] Isolation Forest loaded. "
-                      f"Features: {len(self._iso_feature_columns)}")
+            if iso_model_path.exists() and iso_scaler_path.exists() and iso_cols_path.exists():
+                self._iso_model = joblib.load(iso_model_path)
+                self._iso_scaler = joblib.load(iso_scaler_path)
+                self._iso_feature_columns = joblib.load(iso_cols_path)
+                self._iso_model_ready = True
+                self._log(f"[InferenceEngine] Isolation Forest loaded. Features: {len(self._iso_feature_columns)}")
+            else:
+                self._log("[InferenceEngine] Missing Isolation Forest artifacts. Physical anomaly detection disabled.", level="warning")
         except Exception as exc:
-            pass
-
+            self._log(f"[InferenceEngine] Failed to load Isolation Forest: {exc}", level="error")
     def reload_model(self) -> None:
         """
         Hot-reload the model from disk after the FL Server broadcasts new weights.
@@ -235,21 +230,20 @@ class InferenceEngine(threading.Thread):
         ts       = window.get("window_timestamp", "unknown")
         node_id  = window.get("node_id", 0)
 
-        # --- Isolation Forest (Independent Physical Anomaly Detection) ---
+        # --- Isolation Forest Physical Anomaly Detection ---
         iso_anomaly_detected = False
         if self._iso_model_ready and physical:
-            iso_vec = self._align_iso_features(physical)
-            if iso_vec is not None:
-                iso_df = pd.DataFrame(iso_vec.reshape(1, -1), columns=self._iso_feature_columns)
+            iso_vals = self._align_iso_features(physical)
+            if iso_vals is not None:
+                iso_df = pd.DataFrame(iso_vals.reshape(1, -1), columns=self._iso_feature_columns)
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", UserWarning)
                     iso_scaled = self._iso_scaler.transform(iso_df)
-                iso_pred = self._iso_model.predict(iso_scaled)[0]
-                if iso_pred == -1:
+                
+                # Isolation Forest returns -1 for outliers, 1 for inliers
+                if self._iso_model.predict(iso_scaled)[0] == -1:
                     iso_anomaly_detected = True
-                    # Note: do NOT alert here yet — wait for cyber verdict below.
-                    # If cyber also flags an attack, the cyber label takes priority.
-                    # If cyber says Normal, we raise Physical_Anomaly.
+                    self._log("[InferenceEngine] Isolation Forest detected physical anomaly!", level="warning")
 
         with self._lock:
             # Apply feature engineering (diffs + metadata strip)

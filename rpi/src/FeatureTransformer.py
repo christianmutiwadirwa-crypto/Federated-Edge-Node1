@@ -43,6 +43,22 @@ CYBER_METADATA_COLS = [
     "src_port",
     "dst_port",
     "AttackLabel",
+    # --- ABLATED FEATURES (Simulating Perfect Attacker) ---
+    "payload_rms_magnitude", 
+    "payload_frozen_count", 
+    "payload_cross_axis_std", 
+    "payload_all_zeros_count",
+    "sequence_number_gap", 
+    "total_seq_gap", 
+    "min_seq_gap", 
+    "mean_sequence_increment", 
+    "std_sequence_increment",
+    "out_of_order_packet_count",
+    "max_interarrival_time",
+    "min_interarrival_time",
+    "anomaly_packet_count",
+    "anomaly_packet_rate",
+    "timing_jitter_score"
 ]
 
 PHYSICAL_METADATA_COLS = [

@@ -21,8 +21,8 @@ constexpr uint8_t  PROTOCOL_VERSION = 1;
 // ---------------------------------------------------------------------------
 // WiFi Credentials
 // ---------------------------------------------------------------------------
-constexpr char WIFI_SSID[]          = "Raymond";
-constexpr char WIFI_PASSWORD[]      = "android1";
+constexpr char WIFI_SSID[]          = "########";
+constexpr char WIFI_PASSWORD[]      = "HHHHHHHH";
 
 /// How long to wait for a WiFi association before retrying (ms).
 constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS  = 15000;
@@ -33,7 +33,7 @@ constexpr uint32_t WIFI_RECONNECT_DELAY_MS  = 5000;
 // ---------------------------------------------------------------------------
 // TCP Server (Raspberry Pi)
 // ---------------------------------------------------------------------------
-constexpr char     SERVER_IP[]      = "10.85.187.16";
+constexpr char     SERVER_IP[]      = "00.000.00.00";
 constexpr uint16_t SERVER_PORT      = 9000;
 
 /// How long to wait for a TCP connection to be established (ms).

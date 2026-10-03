@@ -54,7 +54,7 @@ from mlp_torch import (
 # Configuration & Global Schema
 # ---------------------------------------------------------------------------
 
-DEFAULT_RESULTS_DIR = Path(__file__).resolve().parent.parent / "rpi" / "experiments" / "results"
+DEFAULT_DATASET_DIR = Path(__file__).resolve().parent.parent / "dataset"
 DEFAULT_OUTPUT_DIR  = Path(__file__).resolve().parent.parent / "models"
 
 RANDOM_STATE  = 42
@@ -108,64 +108,21 @@ DROPPED_CLASSES = {"DelayExperiment", "ConnectionResetExperiment", "ReconScanExp
 # Step 1: Load Dataset
 # ---------------------------------------------------------------------------
 
-def load_cyber_only_dataset(results_dir: Path, node_id: str) -> pd.DataFrame:
-    """Load cyber_data.csv files only — physical data intentionally excluded."""
-    cyber_files = [f for f in results_dir.rglob("cyber_data.csv") if "evaluation" not in f.parts]
-    cyber_files = sorted(cyber_files)
-    if not cyber_files:
-        raise FileNotFoundError(f"No cyber_data.csv files found under: {results_dir}")
-
-    dfs = []
-    for cyber_path in cyber_files:
-        experiment_name = cyber_path.parent.name
-        try:
-            df = pd.read_csv(cyber_path)
-            df["window_start_time"] = pd.to_datetime(df["window_start_time"])
-            df = df.sort_values("window_start_time").reset_index(drop=True)
-            df["AttackLabel"] = df["AttackLabel"].replace("NormalExperiment", "Normal")
-            dfs.append(df)
-            print(f"  Loaded: {experiment_name} ({len(df)} rows)")
-        except Exception as exc:
-            print(f"  [!] Skipping {experiment_name}: {exc}")
-
-    if not dfs:
-        raise RuntimeError("No valid cyber_data.csv files could be loaded.")
-
-    master = pd.concat(dfs, ignore_index=True)
-    master["AttackLabel"] = master["AttackLabel"].replace("NormalExperiment", "Normal")
-    print(f"\n  Total rows before class filter: {len(master)}")
-
-    # Noise cleaning
-    clean_masks = [master["AttackLabel"] == "Normal"]
-    other_attacks = master["AttackLabel"].isin([
-        "DelayExperiment", "ConnectionResetExperiment", 
-        "DuplicatePacketExperiment", "FloodingExperiment", 
-        "DeviceSpoofHardExperiment", "PacketLossExperiment",
-        "SlowDoSExperiment", "ReconScanExperiment",
-        "DataTamperingBitFlipExperiment", "DataTamperingCRCForgedExperiment",
-        "ReplayExperiment"
-    ])
-    clean_masks.append(other_attacks & (master["total_packets"] > 2))
+def load_unified_dataset(dataset_dir: Path, node_id: str) -> pd.DataFrame:
+    """Load the SSoT dataset directly."""
+    node_prefix = "node1" if node_id == "edge_node_1" else "node2"
+    dataset_path = dataset_dir / f"{node_prefix}_dataset_undersampled.csv"
     
-    # Packet Injection typically only uses 1 or 2 packets, so it must not be filtered by packet count
-    clean_masks.append(master["AttackLabel"].isin([
-        "PacketInjectionMalformedExperiment", 
-        "PacketInjectionConformantExperiment"
-    ]))
-    
-    final_mask = pd.concat(clean_masks, axis=1).any(axis=1)
-    master = master[final_mask].reset_index(drop=True)
-
-    # Filter to Node's allowed classes
-    allowed = NODE_CLASSES.get(node_id, [])
-    if not allowed:
-        raise ValueError(f"Unknown node ID: {node_id}")
+    if not dataset_path.exists():
+        raise FileNotFoundError(f"Unified dataset not found at: {dataset_path}")
         
-    master = master[master["AttackLabel"].isin(allowed)]
-    print(f"  Rows after filtering to {node_id}'s classes: {len(master)}")
+    print(f"  Loading unified dataset from {dataset_path.name}")
+    master = pd.read_csv(dataset_path)
+    
+    master["AttackLabel"] = master["AttackLabel"].replace("NormalExperiment", "Normal")
+    print(f"  Loaded {len(master)} rows.")
     print(f"\n  Class distribution:\n{master['AttackLabel'].value_counts().to_string()}")
     return master
-
 
 # ---------------------------------------------------------------------------
 # Step 2: Feature Engineering
@@ -431,7 +388,7 @@ def save_artifacts(model, scaler, le, feature_names, class_counts, output_dir: P
 def main():
     parser = argparse.ArgumentParser(description="Train Federated PyTorch MLP (class-aware)")
     parser.add_argument("--node-id",        type=str,  default="edge_node_1", help="Node ID to determine allowed classes")
-    parser.add_argument("--results-dir",    type=Path, default=DEFAULT_RESULTS_DIR)
+    parser.add_argument("--dataset-dir",    type=Path, default=DEFAULT_DATASET_DIR)
     parser.add_argument("--output-dir",     type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--init-scaler-only", action="store_true",
                         help="Fit and dump local scaler, then exit (used by FederatedClient Step 0)")
@@ -443,13 +400,13 @@ def main():
 
     print("=" * 65)
     print(f" {args.node_id} Training: Class-Aware PyTorch MLP")
-    print(f" Results dir: {args.results_dir}")
+    print(f" Results dir: {args.dataset_dir}")
     print(f" Output dir:  {args.output_dir}")
     print(f" Started:     {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 65)
 
     print("\n[Step 1] Loading cyber-only dataset...")
-    master = load_cyber_only_dataset(args.results_dir, args.node_id)
+    master = load_unified_dataset(args.dataset_dir, args.node_id)
 
     print("\n[Step 2] Engineering features...")
     df = engineer_features(master)
