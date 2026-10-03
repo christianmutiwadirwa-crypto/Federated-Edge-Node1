@@ -1,4 +1,4 @@
-# 🛡️ Federated Edge Node — IIoT Predictive Maintenance & Intrusion Detection
+#  Federated Edge Node — IIoT Predictive Maintenance & Intrusion Detection
 
 ![Architecture](https://img.shields.io/badge/Architecture-Edge%20Computing-blue)
 ![Machine Learning](https://img.shields.io/badge/Machine%20Learning-PyTorch%20%7C%20Scikit--Learn-orange)
@@ -9,7 +9,7 @@ A production-ready, decentralized edge computing client designed for **Industria
 
 ---
 
-## 🏗️ System Architecture
+##  System Architecture
 
 This repository acts as a monorepo for the three critical components of the node's ecosystem:
 
@@ -27,7 +27,7 @@ This repository acts as a monorepo for the three critical components of the node
 
 ---
 
-## 🧠 The Machine Learning Engine
+##  The Machine Learning Engine
 
 This project pushes the boundaries of edge AI by implementing a highly custom training pipeline locally on the edge device (`rpi/src/train_federated_node.py`):
 
@@ -40,7 +40,7 @@ This project pushes the boundaries of edge AI by implementing a highly custom tr
 
 ---
 
-## 🚀 Deployment & Setup
+##  Deployment & Setup
 
 ### 1. Flash the ESP32
 Navigate to the `esp32/` directory and configure your network:
